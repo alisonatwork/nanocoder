@@ -1,5 +1,6 @@
+import {EventEmitter} from 'node:events';
 import chalk from 'chalk';
-import {type Key, Text, useInput, useStdin} from 'ink';
+import {type Key, type StdinProps, Text, useInput, useStdin} from 'ink';
 import {
 	forwardRef,
 	useEffect,
@@ -15,6 +16,11 @@ import {
 	moveCursorToVisualLine,
 	wrapWithTrimmedContinuations,
 } from '@/terminal/text-wrapping';
+
+type StdinContextProps = StdinProps & {internal_eventEmitter: EventEmitter};
+function useStdinContext(): StdinContextProps {
+	return useStdin() as StdinContextProps;
+}
 
 /**
  * The raw byte sequence behind the keypress a `useInput` handler is running
@@ -33,7 +39,7 @@ import {
  * re-subscribe in.
  */
 export function useRawInput() {
-	const {internal_eventEmitter: emitter} = useStdin();
+	const {internal_eventEmitter: emitter} = useStdinContext();
 	const rawRef = useRef('');
 
 	useEffect(() => {
