@@ -1,6 +1,5 @@
-import {EventEmitter} from 'node:events';
 import chalk from 'chalk';
-import {type StdinProps, Text, useInput, useStdin} from 'ink';
+import {Text, useInput} from 'ink';
 import {
 	forwardRef,
 	useEffect,
@@ -16,37 +15,6 @@ import {
 	moveCursorToVisualLine,
 	wrapWithTrimmedContinuations,
 } from '@/terminal/text-wrapping';
-
-type StdinContextProps = StdinProps & {internal_eventEmitter: EventEmitter};
-function useStdinContext(): StdinContextProps {
-	return useStdin() as StdinContextProps;
-}
-
-/**
- * The raw byte sequence behind the keypress a `useInput` handler is running
- * for. Read `.current` inside the handler, not during render.
- *
- * The sequence comes from the stdin emitter Ink exposes through `useStdin`,
- * the stream `useInput` itself listens to. The listener is prepended so it
- * always runs before any `useInput` handler, whatever order those
- * re-subscribe in.
- */
-function useRawInput() {
-	const {internal_eventEmitter: emitter} = useStdinContext();
-	const rawRef = useRef('');
-
-	useEffect(() => {
-		const onInput = (data: unknown) => {
-			rawRef.current = String(data);
-		};
-		emitter.prependListener('input', onInput);
-		return () => {
-			emitter.removeListener('input', onInput);
-		};
-	}, [emitter]);
-
-	return rawRef;
-}
 
 /**
  * How the value effect should treat an incoming `value`, given the values
@@ -386,8 +354,6 @@ const TextInput = forwardRef<TextInputHandle, Props>(function TextInput(
 		}
 	}
 
-	const rawInputRef = useRawInput();
-
 	useInput(
 		(input, key) => {
 			if ((key.ctrl && input === 'c') || key.tab || (key.shift && key.tab)) {
@@ -430,7 +396,7 @@ const TextInput = forwardRef<TextInputHandle, Props>(function TextInput(
 			// the wrong place when the cursor was mid-text and left the cursor
 			// stranded in front of it. Checked before `key.return` because several
 			// of these encodings (ESC+CR, kitty CSI-u) do set `key.return`.
-			if (isNewlineKey(input, key, rawInputRef.current)) {
+			if (isNewlineKey(input, key)) {
 				const currentValue = originalValueRef.current;
 				const offset = cursorOffsetRef.current;
 				const withNewline =
