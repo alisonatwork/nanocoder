@@ -2,6 +2,7 @@ import test from 'ava';
 import {render} from 'ink-testing-library';
 import React, {useState} from 'react';
 import stripAnsi from 'strip-ansi';
+import {rewriteModifyOtherKeys} from '@/terminal/modify-other-keys';
 import TextInput from './text-input';
 
 /**
@@ -12,17 +13,19 @@ import TextInput from './text-input';
  * who sends them. The regressions these guard:
  *
  * - ESC+CR submitted the prompt instead of inserting a newline
- * - the xterm modifyOtherKeys form was unparseable by Ink and its ESC-stripped
- *   sequence was inserted into the prompt as the literal text `[27;2;13~`
  * - the kitty CSI-u form appended '\n' to the end of the value rather than at
  *   the cursor, and left the cursor stranded in front of it, so the next
  *   character typed went on the wrong line
+ *
+ * The xterm modifyOtherKeys form (`ESC [27;2;13~`, what xterm.js sends) is
+ * covered separately: it is rewritten to the kitty CSI-u form by the stdin
+ * proxy in cli.tsx before Ink ever sees it (see modify-other-keys.spec.ts),
+ * so here only the kitty form needs to arrive on stdin.
  *
  * Sequences used:
  *   LF (Ctrl+J)                  \n
  *   ESC+CR (Option/Alt+Enter)    ESC \r
  *   kitty CSI-u Shift+Enter      ESC [13;2u
- *   xterm modifyOtherKeys        ESC [27;2;13~
  *   bare CR (Enter)              \r
  *   Left                         ESC [D
  */
@@ -64,7 +67,6 @@ const newlineSequences: Array<[string, string]> = [
 	['LF (Ctrl+J)', LF],
 	['ESC+CR (Option/Alt+Enter)', ESC_CR],
 	['kitty CSI-u Shift+Enter', KITTY_SHIFT_ENTER],
-	['xterm modifyOtherKeys Shift+Enter', XTERM_SHIFT_ENTER],
 ];
 
 for (const [label, sequence] of newlineSequences) {
@@ -152,11 +154,32 @@ test('the xterm modifyOtherKeys sequence never reaches the value as text', async
 		<ControlledTextInput valueRef={valueRef} initialValue="" />,
 	);
 
+	// The stdin proxy in cli.tsx rewrites this to kitty CSI-u before Ink sees
+	// it. When it arrives unrewritten anyway — a sequence split across reads,
+	// say — Ink 8 drops it as an unrecognised complete sequence rather than
+	// letting its ESC-stripped bytes into the prompt.
 	await press(stdin, XTERM_SHIFT_ENTER);
 	await settle();
 
 	t.false(valueRef.current.includes('27;2;13'));
 	t.false(valueRef.current.includes('['));
+	unmount();
+});
+
+test('the xterm modifyOtherKeys sequence inserts a newline once rewritten to the kitty form', async t => {
+	const valueRef: ValueRef = {current: ''};
+	const {stdin, unmount} = render(
+		<ControlledTextInput valueRef={valueRef} initialValue="aaa" />,
+	);
+
+	// Composes the proxy rewrite (verified byte-for-byte in
+	// modify-other-keys.spec.ts) with the kitty CSI-u handling above: the
+	// bytes TextInput receives after xterm.js's Shift+Enter passes through
+	// the stdin proxy are exactly the kitty form.
+	await press(stdin, rewriteModifyOtherKeys(XTERM_SHIFT_ENTER));
+	await settle();
+
+	t.is(valueRef.current, 'aaa\n');
 	unmount();
 });
 

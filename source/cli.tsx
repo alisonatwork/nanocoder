@@ -1003,6 +1003,9 @@ async function main(): Promise<void> {
 			const {splitControlKeypresses} = await import(
 				'@/terminal/terminal-keypress'
 			);
+			const {rewriteModifyOtherKeys} = await import(
+				'@/terminal/modify-other-keys'
+			);
 
 			// Bracketed paste in both screen modes. Without it the terminal
 			// sends a paste as bare bytes, so the CR at each line break
@@ -1058,7 +1061,14 @@ async function main(): Promise<void> {
 					wheelEvents.emit('wheel', direction);
 				}
 				if (result.clean) {
-					queueKeypresses(splitControlKeypresses(result.clean));
+					// xterm modifyOtherKeys Shift/Alt+Enter arrives in a form
+					// Ink 8 cannot parse and drops; rewrite it to the kitty
+					// CSI-u form it parses natively, so the chord keeps
+					// inserting a newline.
+					const rewritten = rewriteModifyOtherKeys(result.clean);
+					if (rewritten) {
+						queueKeypresses(splitControlKeypresses(rewritten));
+					}
 				}
 			};
 			// Ink drains everything buffered on each 'readable', so pieces

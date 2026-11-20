@@ -19,6 +19,10 @@ import type {Key} from 'ink';
  * Bare Shift+Enter is deliberately absent: most terminals send it as a plain
  * `\r`, byte-identical to Enter, so it cannot be told apart from submit. Those
  * terminals need a keybinding (or the kitty protocol) to send one of the above.
+ *
+ * The xterm modifyOtherKeys forms (`\x1b[27;2;13~`, `\x1b[27;3;13~`) never
+ * reach this predicate: the stdin proxy in cli.tsx rewrites them to the
+ * kitty CSI-u form before Ink parses the keypress.
  */
 export function isNewlineKey(input: string, key: Key): boolean {
 	if (input === '\n' && !key.return) {
